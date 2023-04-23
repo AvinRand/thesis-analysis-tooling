@@ -46,39 +46,12 @@ def categorize_assay_data(layout: pd.DataFrame, data: pd.DataFrame, conditions_m
                     break
             organized_data.loc[i * len(layout['1']) + j] = organized_row + [data_point] + [experimental_id]  
     
-    organized_data.to_csv(output_path + "/Organized_Data.csv")
+    organized_data.to_csv(output_path + "/Organized_Data.csv", index=False)
 
     return organized_data
 
 
-def extract_peak_position_profiles_ra_original(path_to_sweep_output_folder: str) -> pd.DataFrame:
-    '''This function extracts peak position profiles when the original retrospective analysis script is used for analysis with eight sensors.  It scales such that peak shift units are in nanometers and places the output into a dataframe'''
-    
-    sensor_1 = scipy.io.loadmat(path_to_sweep_output_folder + '/Ch1-2_Analysis/matlab_matrix.mat')['power_1_offset_list'][0]
-    sensor_2 = scipy.io.loadmat(path_to_sweep_output_folder + '/Ch1-2_Analysis/matlab_matrix.mat')['power_2_offset_list'][0]
-    sensor_3 = scipy.io.loadmat(path_to_sweep_output_folder + '/Ch3-4_Analysis/matlab_matrix.mat')['power_1_offset_list'][0]
-    sensor_4 = scipy.io.loadmat(path_to_sweep_output_folder + '/Ch3-4_Analysis/matlab_matrix.mat')['power_2_offset_list'][0]
-    sensor_5 = scipy.io.loadmat(path_to_sweep_output_folder + '/Ch5-6_Analysis/matlab_matrix.mat')['power_1_offset_list'][0]
-    sensor_6 = scipy.io.loadmat(path_to_sweep_output_folder + '/Ch5-6_Analysis/matlab_matrix.mat')['power_2_offset_list'][0]
-    sensor_7 = scipy.io.loadmat(path_to_sweep_output_folder + '/Ch7-8_Analysis/matlab_matrix.mat')['power_1_offset_list'][0]
-    sensor_8 = scipy.io.loadmat(path_to_sweep_output_folder + '/Ch7-8_Analysis/matlab_matrix.mat')['power_2_offset_list'][0]
-    time = scipy.io.loadmat(path_to_sweep_output_folder + '/Ch5-6_Analysis/matlab_matrix.mat')['t_array'][0]
-
-    sensor_data = pd.DataFrame(columns=['Time', 'Sensor 1', 'Sensor 2', 'Sensor 3', 'Sensor 4', 'Sensor 5', 'Sensor 6', 'Sensor 7', 'Sensor 8'])
-    sensor_data['Time'] = time
-    sensor_data['Sensor 1'] = sensor_1 * 1e9
-    sensor_data['Sensor 2'] = sensor_2 * 1e9
-    sensor_data['Sensor 3'] = sensor_3 * 1e9
-    sensor_data['Sensor 4'] = sensor_4 * 1e9
-    sensor_data['Sensor 5'] = sensor_5 * 1e9
-    sensor_data['Sensor 6'] = sensor_6 * 1e9
-    sensor_data['Sensor 7'] = sensor_7 * 1e9
-    sensor_data['Sensor 8'] = sensor_8 * 1e9
-
-    return sensor_data
-
-
-def extract_peak_positions_ra_gui(path_to_sweep_output_folder: str) -> pd.DataFrame:
+def extract_peak_positions(path_to_sweep_output_folder: str) -> pd.DataFrame:
     '''This function extracts peak position profiles when the updated retrospective analysis script (with a GUI) is used for analysis.  It assumes that results are provided in nanometers, the power arrays of each sensor contains the word power (case sensitive) and are arranged in ascending order (i.e. power_1_array, power_2_array, etc.), and that the timesteps array units are in minutes; the output is placed into a dataframe'''
 
     sensor_matrix = scipy.io.loadmat(path_to_sweep_output_folder + '/peak_shifts.mat')
@@ -100,13 +73,13 @@ def extract_peak_positions_ra_gui(path_to_sweep_output_folder: str) -> pd.DataFr
     return sensor_data
 
 
-def consolidate_fluigent_data(sensor_dataframe: pd.DataFrame, path_to_directory: str, save_path: str, experimental_id: str, protocol_keyword: str = None, multi_part: bool = False) -> pd.DataFrame:
-    '''This function takes the power sensor dataframe and adds columns corresponding to data from the fluigent log file.  The fluigent logging frequency will likely not match the sweep frequency, and so this function assigns the fluigent log datapoint immediately before a given sweep to that entry in the resulting dataframe, thereby providing a consolidated dataframe with corresponding optical and fluidic information with an added column that identifies the experiment based on a user-specified string (defined by the experimental_id argument). The protocol_keyword is a unique string in the Fluigent protocol title, which will be present in the Fluigent log file csv title and is used to search for the corresponding file within the fluigent directory.  If your assay requires multiple stages, note 'Part 1' and 'Part 2' and set the optional multi_part parameter as True. '''
+def consolidate_fluigent_data(sensor_dataframe: pd.DataFrame, path_to_directory: str, save_path: str, experimental_id: str, protocol_keyword: str = None, multi_part: bool = False, delimiter: str = ',') -> pd.DataFrame:
+    '''This function takes the power sensor dataframe and adds columns corresponding to data from the fluigent log file.  The fluigent logging frequency will likely not match the sweep frequency, and so this function assigns the fluigent log datapoint immediately before a given sweep to that entry in the resulting dataframe, thereby providing a consolidated dataframe with corresponding optical and fluidic information with an added column that identifies the experiment based on a user-specified string (defined by the experimental_id argument). The path to directory argument should define the directory in which the fluigent log CSV file resides; if there are multiple CSVs, define the optional protocol_keyword argument as a string unique to the filename of that CSV. If your assay requires multiple stages, include 'Part 1' and 'Part 2' in the CSV and set the optional multi_part parameter as True. '''
 
     if multi_part:
         # Load the log files of interest based on keywords in the filename (based on the name assigned to the fluigent protocol running)
-        fluigent_part_1 = pd.read_csv(glob.glob(path_to_directory + "/*Part-1*.csv")[0])
-        fluigent_part_2 = pd.read_csv(glob.glob(path_to_directory + "/*Part-2*.csv")[0])
+        fluigent_part_1 = pd.read_csv(glob.glob(path_to_directory + "/*Part-1*.csv")[0], delimiter=delimiter)
+        fluigent_part_2 = pd.read_csv(glob.glob(path_to_directory + "/*Part-2*.csv")[0], delimiter=delimiter)
         # Convert the fluigent timestamps to timestamps recognized by the pandas library for downstream processing
         fluigent_part_1['Time'] = pd.to_datetime(fluigent_part_1['Time'])
         fluigent_part_2['Time'] = pd.to_datetime(fluigent_part_2['Time'])
@@ -123,8 +96,8 @@ def consolidate_fluigent_data(sensor_dataframe: pd.DataFrame, path_to_directory:
         fluigent = pd.concat([fluigent_part_1, fluigent_part_2], ignore_index=True, sort=False)
 
     else:
-        fluigent = pd.read_csv(glob.glob(path_to_directory + f"/*{protocol_keyword}*.csv")[0])
-        fluigent['Time'] = pd.to_datetime(fluigent_part_1['Time'])
+        fluigent = pd.read_csv(glob.glob(path_to_directory + f"/*{protocol_keyword}*.csv")[0], delimiter=delimiter)
+        fluigent['Time'] = pd.to_datetime(fluigent['Time'])
         start_datetime = fluigent['Time'][0]
         fluigent['Time'] = fluigent['Time'] - start_datetime
         fluigent['Time'] = fluigent['Time'].dt.total_seconds()
@@ -149,40 +122,36 @@ def consolidate_fluigent_data(sensor_dataframe: pd.DataFrame, path_to_directory:
     all_data['Pressure (Channel 2)'] = fluigent_data['Flow EZ #2 (13110)'].to_numpy()
     all_data['Experimental Identifier'] = experimental_id
 
-    all_data.to_csv(save_path+'/Tabulated Data.csv')
+    all_data.to_csv(save_path+'/Tabulated Data.csv', index = False)
 
     return all_data
 
 
-def tabulate_net_peak_shifts(experiment_data: pd.DataFrame, sweep_coordinates: list, list_of_assay_stages: list, conditions: list, experimental_id: str, save_path: str, sweeps_average: int = 5):
-    '''This function calculates the mean peak position across a series consecutive sweeps (the first sweep in each series is defined by the list of sweep_coordinates and the last is defined by the sweeps_average optional parameter, default set to the five sweeps following the first) and tabulates them into a dataframe.  The number of coordinates supplied should match the number of string items in the list_of_assay_stages parameter (e.g. Baseline PBS, antibody, antigen, etc.).  The resulting dataframe includes a condition column, which is defined by a pair of strings in a list (user defined, such as positive and negative control; based on the currently microfluidic design only two conditions are possible).  This dataframe is saved as a csv to the save path.  A second dataframe is generated that contains a 'Peak Shift' column, generated using the Pandas .diff method, replacing the 'Mean Peak Position' entry with the difference between each subsequent stage (i.e. the net shift corresponding to each stage), with the first assay stage removed (assumed to be a reference point for later bulk RI or binding shifts).  The second dataframe is saved to the same save path and includes a column that identifies the experiment for later comparison (defined by the experimental_id argument).'''
+def tabulate_net_peak_shifts(experiment_data: pd.DataFrame, conditions_mapping: dict, sweep_coordinates: list, list_of_assay_stages: list, experimental_id: str, save_path: str, sweeps_average: int = 5) -> pd.DataFrame:
+    '''This function takes six mandatory and one optional argument to return a tabulated list of calculated net resonance peak shifts as a pandas dataframe; the arguments are, respectively, the experiment data (generally the output of the 'consolidate_fluigent_data' function or a dataframe with column names in the format 'Sensor 1', 'Sensor 2' ... and 'Time'), the user-specified conditions mapping (a nested dictionary mapping each sensor to a dictionary of parameter-value pairs), sweep coordinates (sweep number integers from which to calculate net shift differences), the stages of the assay (strings, whose should match the number of coordinates), an experimental identifier (e.g. the experiment title), and a save path (into which the output dataframe will be stored).  The optional argument defines the number of sweeps across which an average will be taken for net peak shift calculations (the default is 5, meaning the peak position will be the average of a coordinate and the five sweeps following it).'''
     
-    quantified_peak_pos_data = pd.DataFrame(columns=['Condition', 'Sensor' ,'Stage', 'Mean Peak Position Over 5 Sweeps (nm)'])
+    quantified_peak_pos_data = pd.DataFrame(columns= ['Optical Channel'] + list(list(conditions_mapping.values())[0].keys()) + ['Assay Stage', 'Mean Peak Position Over 5 Sweeps (nm)'])
     
-    for i, column in enumerate(experiment_data):
-        if 'Sensor' in column:
-            sensor_num = i+1
-            if conditions[0] in column:
-                condition = conditions[0]
-            if conditions[1] in column: 
-                condition = conditions[1]
+    if len(sweep_coordinates) == len(list_of_assay_stages):
+        for i, sensor in enumerate(conditions_mapping.keys()):
+            optical_channel = [int(s) for s in sensor.split() if s.isdigit()]
             for j, sweep in enumerate(sweep_coordinates):
-                mean_peak_pos = experiment_data[column].iloc[sweep:sweep+sweeps_average].mean()
+                mean_peak_pos = experiment_data[sensor].iloc[sweep:sweep+sweeps_average].mean()
                 stage = list_of_assay_stages[j]
-                count = i*6 + j
-                quantified_peak_pos_data.loc[count] = [condition, sensor_num, stage, mean_peak_pos]
-        
-    quantified_peak_pos_data.to_csv(save_path + '/Processed Peak Position Data.csv')
+                count = i * len(sweep_coordinates) + j
+                quantified_peak_pos_data.loc[count] = optical_channel + list(conditions_mapping[sensor].values()) + [stage, mean_peak_pos]
+    else:
+        print('The number of coordinates provided does not match the number of assay stages')
     
-    drop_indexes = quantified_peak_pos_data.index[quantified_peak_pos_data['Stage'] == list_of_assay_stages[0]].tolist()
-    shift_data = quantified_peak_pos_data.copy()
-    shift_data["Peak Shift"] = shift_data['Mean Peak Position Over 5 Sweeps (nm)'].diff()
-    shift_data.drop(drop_indexes, inplace=True)
-    shift_data.drop(['Mean Peak Position Over 5 Sweeps (nm)'], axis = 1, inplace=True)
-    shift_data["Experimental Identifier"] = experimental_id
-    shift_data.to_csv(save_path + '/Processed Shift Data.csv')
-    
-    return shift_data
+    if len(quantified_peak_pos_data) > 0:
+        drop_indexes = quantified_peak_pos_data.index[quantified_peak_pos_data['Assay Stage'] == list_of_assay_stages[0]].tolist()
+        shift_data = quantified_peak_pos_data.copy()
+        shift_data["Peak Shift"] = shift_data['Mean Peak Position Over 5 Sweeps (nm)'].diff()
+        shift_data.drop(drop_indexes, inplace=True)
+        shift_data.drop(['Mean Peak Position Over 5 Sweeps (nm)'], axis = 1, inplace=True)
+        shift_data["Experimental Identifier"] = experimental_id
+        shift_data.to_csv(save_path + '/Processed Shift Data.csv', index=False)
+        return shift_data
 
 
 def stich_video_from_timelapse_captures(image_format, video_framerate, image_folder, video_name, save_path):
